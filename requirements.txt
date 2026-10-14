@@ -2,3 +2,6 @@ List of dependencies
   NumPy, 
   Pandas, 
   Matplotlib
+seaborn
+pytest
+jupyter
