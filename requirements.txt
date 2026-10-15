@@ -1,7 +1,6 @@
-List of dependencies 
-  NumPy, 
-  Pandas, 
-  Matplotlib
-seaborn
+numpy
+pandas
+matplotlib
+requests
 pytest
 jupyter

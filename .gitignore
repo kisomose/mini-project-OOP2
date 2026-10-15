@@ -1,8 +1,30 @@
-# Ignore node modules
-node_modules/
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
 
-# Ignore logs
-*.log
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 
-# Ignore environment files
+# Jupyter Notebook Checkpoints & Cache
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Distribution / Build Output
+build/
+dist/
+*.egg-info/
+
+# Environment Variables / Keys (Best practice)
 .env
