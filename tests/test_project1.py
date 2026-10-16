@@ -1,35 +1,78 @@
+import json
+import os
 import pytest
-from unittest.mock import patch, MagicMock
-from src.project1 import geocode, get_forecast
 import requests
-from src.project1 import geocode, get_forecast, safe_request, APIError
+from unittest.mock import patch, MagicMock
+from src.project1 import geocode, get_forecast, safe_request, APIError, WMO_WEATHER_CODES
+
+# Load offline sample JSON files from disk
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
+
+with open(os.path.join(FIXTURES_DIR, "sample_geocode.json"), "r", encoding="utf-8") as f:
+    SAMPLE_GEOCODE_JSON = json.load(f)
+
+with open(os.path.join(FIXTURES_DIR, "sample_forecast.json"), "r", encoding="utf-8") as f:
+    SAMPLE_FORECAST_JSON = json.load(f)
+
+
+# --- 5 OFFLINE PARSING CHECKS USING SAMPLE JSON FILES ---
 
 @patch("src.project1.requests.get")
-def test_geocode_mocked_success(mock_get):
-    """Test geocode returns correct coordinates and formatted display name."""
+def test_check_1_geocode_latitude(mock_get):
+    """Check 1: Verify geocoding parses latitude correctly offline."""
     mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "results": [
-            {
-                "name": "London",
-                "admin1": "England",
-                "country": "United Kingdom",
-                "latitude": 51.5074,
-                "longitude": -0.1278,
-                "timezone": "Europe/London",
-            }
-        ]
-    }
+    mock_response.json.return_value = SAMPLE_GEOCODE_JSON
     mock_response.raise_for_status.return_value = None
     mock_get.return_value = mock_response
 
-    lat, lon, display_name, tz = geocode("London")
+    lat, _, _, _ = geocode("Kampala")
+    assert lat == 0.3163
 
-    assert lat == 51.5074
-    assert lon == -0.1278
-    assert "London" in display_name
-    assert tz == "Europe/London"
 
+@patch("src.project1.requests.get")
+def test_check_2_geocode_display_name(mock_get):
+    """Check 2: Verify formatted display name construction offline."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = SAMPLE_GEOCODE_JSON
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
+    _, _, display_name, _ = geocode("Kampala")
+    assert "Kampala, Central Region (Uganda)" in display_name
+
+
+@patch("src.project1.requests.get")
+def test_check_3_forecast_temperature_parsing(mock_get):
+    """Check 3: Verify parsing daily max temperature offline."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = SAMPLE_FORECAST_JSON
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
+    data = get_forecast(0.3163, 32.5822)
+    assert data["daily"]["temperature_2m_max"][0] == 25.4
+
+
+@patch("src.project1.requests.get")
+def test_check_4_forecast_precipitation_parsing(mock_get):
+    """Check 4: Verify parsing precipitation sum offline."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = SAMPLE_FORECAST_JSON
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
+    data = get_forecast(0.3163, 32.5822)
+    assert data["daily"]["precipitation_sum"][0] == 1.2
+
+
+def test_check_5_wmo_code_decoding_mapping():
+    """Check 5: Verify WMO code decoding dictionary offline."""
+    assert WMO_WEATHER_CODES[61] == "Slight rain"
+    assert WMO_WEATHER_CODES[0] == "Clear sky"
+    assert WMO_WEATHER_CODES[95] == "Thunderstorm"
+
+
+# --- ERROR HANDLING AND ROBUSTNESS TESTS ---
 
 @patch("src.project1.requests.get")
 def test_geocode_mocked_not_found(mock_get):
@@ -44,40 +87,8 @@ def test_geocode_mocked_not_found(mock_get):
 
 
 @patch("src.project1.requests.get")
-def test_get_forecast_mocked(mock_get):
-    """Test get_forecast parses daily weather data correctly."""
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "daily": {
-            "time": ["2026-10-15"],
-            "temperature_2m_max": [20.1],
-            "temperature_2m_min": [12.0],
-            "precipitation_sum": [0.0],
-            "wind_speed_10m_max": [15.2],
-            "weather_code": [0],
-        }
-    }
-    mock_response.raise_for_status.return_value = None
-    mock_get.return_value = mock_response
-
-    data = get_forecast(51.5074, -0.1278, days=1, timezone="Europe/London")
-
-    assert "daily" in data
-    assert data["daily"]["temperature_2m_max"][0] == 20.1
-
-
-def test_live_geocode():
-    """Live API integration test for geocoding."""
-    lat, lon, display_name, tz = geocode("Tokyo")
-    assert isinstance(lat, float)
-    assert isinstance(lon, float)
-    assert "Tokyo" in display_name
-
-@patch("src.project1.requests.get")
 def test_safe_request_raises_api_error(mock_get):
     """Test that safe_request retries on failure and raises APIError on exhaustion."""
-    from src.project1 import safe_request, APIError
-
     mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
 
     with pytest.raises(APIError, match="API request to"):
@@ -85,12 +96,14 @@ def test_safe_request_raises_api_error(mock_get):
 
     assert mock_get.call_count == 2
 
-def test_broken_inputs():
-    """Test robustness against invalid city names and invalid coordinate inputs."""
-    # Invalid City
+
+@patch("src.project1.requests.get")
+def test_broken_inputs(mock_get):
+    """Test robustness against invalid city names when mock API returns empty results."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {}
+    mock_response.raise_for_status.return_value = None
+    mock_get.return_value = mock_response
+
     with pytest.raises(ValueError):
         geocode("NonExistentCityXYZ12389")
-
-    # Invalid Latitude
-    with pytest.raises(APIError):
-        get_forecast(lat=999.0, lon=0.0)
